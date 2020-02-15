@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assignment 2 - Tessellation and Twist</title>
+  <link rel="stylesheet" type="text/css" href="Common/jquery-ui.css">
+  <link rel="stylesheet" type="text/css" href="styles.css">
+  <script src="Common/webgl-utils.js"></script>
+  <script src="Common/initShaders.js"></script>
+  <script src="Common/MV.js"></script>
+  <script src="Common/jquery.min.js"></script>
+  <script src="Common/jquery-ui.min.js"></script>
+</head>
+<body>
+
+<h1>WebGL - Tessellation and Twist</h1>
+<hr />
+
+<table>
+  <tr>
+    <td>
+      <div style="max-height: 800px; max-width:1600px; overflow: hidden;border: 2px solid black">
+        <canvas id="gl-canvas" width="1600" height="1600" style="position: relative;top: -400px;">
+          Oops ... your browser doesn't support the HTML5 canvas element
+        </canvas>
+      </div>
+    </td>
+  </tr>
+  <tr>  
+    <td style="padding-right: 10px" >
+      <p>
+        <label for="shape">Select Shapes To Render:</label>
+        <br />
+        <select name="shape" id="shape" style="width: 100%">
+          <option value="1" selected>Two triangles, one simple and the other tessellated, both in line/wireframe drawing style</option>
+          <option value="2">Showing two tessellated and twisted triangles, both in filled-color form</option>
+          <option value="3">Four polygons (square, pentagon, hexagon, octagon), in line form</option>
+          <option value="4">Four polygons (square, pentagon, hexagon, octagon), as tessellated polygons, in line/wireframe drawing style), each polygon being split into a smaller set of triangles (using 5 recursive subdivisions)</option>
+          <option value="5">Five polygons (triangle, square, pentagon, hexagon, octagon), as filled and twisted polygons, in filled-color form</option>
+          <option value="6">Interactive Five polygons</option>
+        </select>
+      </p>
+
+      <div id="interactions">
+        <p>
+          <label for="tessellation">Tessellation:</label>
+          <input type="text" id="tessellation" readonly style="border:0; color:#f6931f; font-weight:bold;" value="0">
+          <br />
+          <div id="tessellation-slider" value="0"></div>
+        </p>
+    
+        <p>
+          <div id="fill" style="width: 100%; text-align: center">
+            <input type="radio" id="fill-radio1" name="fill-radio" ><label for="fill-radio1">Solid</label>
+            <input type="radio" id="fill-radio2" name="fill-radio"><label for="fill-radio2">Gasket</label>
+            <input type="radio" id="fill-radio3" name="fill-radio" checked="checked"><label for="fill-radio3">Lines</label>
+            <input type="radio" id="fill-radio4" name="fill-radio"><label for="fill-radio4">Gasket Lines</label>
+          </div>
+        </p>
+    
+        <p>
+          <label for="rotation">Rotation:</label>
+          <input type="text" id="rotation" readonly style="border:0; color:#f6931f; font-weight:bold;" value="0°">
+          <div id="rotation-slider"></div>
+        </p>
+        
+        <p>
+          <div id="twist" style="width: 100%; text-align: center">
+            <input type="radio" id="twist-radio1" name="twist-radio" checked="checked"><label for="twist-radio1">Normal</label>
+            <input type="radio" id="twist-radio2" name="twist-radio"><label for="twist-radio2">Twist</label>
+          </div>
+        </p>
+      </div>
+    </td>
+  </tr>
+</table>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+attribute vec2 vPosition;
+
+void main() {
+    gl_Position = vec4(vPosition, 0.0, 1.0);
+}
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+precision mediump float;
+
+void main() {
+    gl_FragColor = vec4(1, 0, 0, 1.0);
+}
+</script>
+<script type="text/javascript">
+var gl;
+var vertices;
+var points;
+var program;
+
+var fill = 3;
+var tessellation = 0;
+var rotate = 0;
+var twist = false;
+
+var step = 1;
+
+var vec_triangle = [
+  vec2(-0.85, -0.4907477295),
+  vec2( 0.85, -0.4907477295),
+  vec2( 0.0,  0.9814954573)
+];
+
+var vec_square = [
+  vec2(-0.7, -0.7),
+  vec2( 0.7,  0.7),
+  vec2(-0.7,  0.7),
+
+  vec2(-0.7, -0.7),
+  vec2( 0.7,  0.7),
+  vec2( 0.7, -0.7)
+];
+
+var vec_pentagon = [
+vec2(0.0, 0.0),
+vec2(0.0, -1.000000),
+vec2(-0.951057, -0.309017),
+
+vec2(0.0, 0.0),
+vec2(-0.951057, -0.309017),
+vec2(-0.587785, 0.809017),
+
+vec2(0.0, 0.0),
+vec2(-0.587785, 0.809017),
+vec2(0.587785, 0.809017),
+
+vec2(0.0, 0.0),
+vec2(0.587785, 0.809017),
+vec2(0.951057, -0.309017),
+
+vec2(0.0, 0.0),
+vec2(0.951057, -0.309017),
+vec2(0.0, -1.000000),
+];
+
+var vec_hexagon = [
+vec2(0.0, 0.0),
+vec2(0.0, -1.000000),
+vec2(-0.866025, -0.500000),
+
+vec2(0.0, 0.0),
+vec2(-0.866025, -0.500000),
+vec2(-0.866025, 0.500000),
+
+vec2(0.0, 0.0),
+vec2(-0.866025, 0.500000),
+vec2(0.0, 1.000000),
+
+vec2(0.0, 0.0),
+vec2(0.0, 1.000000),
+vec2(0.866025, 0.500000),
+
+vec2(0.0, 0.0),
+vec2(0.866025, 0.500000),
+vec2(0.866025, -0.500000),
+
+vec2(0.0, 0.0),
+vec2(0.866025, -0.500000),
+vec2(0.0, -1.000000),
+];
+
+var vec_octagon = [
+vec2(0.0, 0.0),
+vec2(0.831491579260158, 0.3444150891285808),
+vec2(0.3444150891285809, 0.831491579260158),
+
+vec2(0.0, 0.0),
+vec2(0.3444150891285809, 0.831491579260158),
+vec2(-0.34441508912858076, 0.831491579260158),
+
+vec2(0.0, 0.0),
+vec2(-0.34441508912858076, 0.831491579260158),
+vec2(-0.831491579260158, 0.34441508912858093),
+
+vec2(0.0, 0.0),
+vec2(-0.831491579260158, 0.34441508912858093),
+vec2(-0.8314915792601582, -0.3444150891285807),
+
+vec2(0.0, 0.0),
+vec2(-0.8314915792601582, -0.3444150891285807),
+vec2(-0.3444150891285813, -0.8314915792601579),
+
+vec2(0.0, 0.0),
+vec2(-0.3444150891285813, -0.8314915792601579),
+vec2(0.34441508912858027, -0.8314915792601583),
+
+vec2(0.0, 0.0),
+vec2(0.34441508912858027, -0.8314915792601583),
+vec2(0.8314915792601579, -0.3444150891285814),  
+
+vec2(0.0, 0.0),
+vec2(0.8314915792601579, -0.3444150891285814),
+vec2(0.831491579260158, 0.3444150891285808),  
+];
+
+verticesTriangle = vec_triangle.slice(0);
+verticesSquare = vec_square.slice(0);
+verticesPentagon = vec_pentagon.slice(0);
+verticesHexagon = vec_hexagon.slice(0);
+verticesOctagon = vec_octagon.slice(0);
+
+var shapesVertices = {
+  3:verticesTriangle,
+  4:verticesSquare,
+  5:verticesPentagon,
+  6:verticesHexagon,
+  8:verticesOctagon
+};
+
+function addShapesForStep(step) {
+  $("#interactions").hide();
+  tess = 5;
+  if(step == 1){
+    fill = 3;
+    addShape(3,0,fill,-0.5,1/5,0,0);
+    addShape(3,tess,fill,0.5,1/5,0,0);    
+  } else if(step == 2){
+    fill = 1;
+    rotation = 180;
+    addShape(3,tess,fill,-0.5,1/5,0,0);
+    addShape(3,tess, fill,0.5,1/5,rotation,1);    
+  } else if(step == 3){
+    fill = 3;
+    addShape(4,0,fill,-0.75,1/5,0,0);    
+    addShape(5,0,fill,-0.25,1/5,0,0);    
+    addShape(6,0,fill,+0.25,1/5,0,0);    
+    addShape(8,0,fill,+0.75,1/5,0,0);    
+  } else if(step == 4){
+    fill = 3;
+    addShape(4,tess,fill,-0.75,1/5,0,0);    
+    addShape(5,tess,fill,-0.25,1/5,0,0);    
+    addShape(6,tess,fill,+0.25,1/5,0,0);    
+    addShape(8,tess,fill,+0.75,1/5,0,0);    
+  } else if(step == 5){
+    fill = 1;
+    rotation = 360;
+    addShape(3,tess,fill,-0.8,1/5,rotation,1);  
+    addShape(4,tess,fill,-0.4,1/5,rotation,1);    
+    addShape(5,tess,fill,-0.0,1/5,rotation,1);    
+    addShape(6,tess,fill,+0.4,1/5,rotation,1);    
+    addShape(8,tess,fill,+0.8,1/5,rotation,1);    
+  } else if(step == 6){
+    $("#interactions").show();
+    addShape(3,tessellation,fill,-0.8,1/5,rotate,twist);  
+    addShape(4,tessellation,fill,-0.4,1/5,rotate,twist);    
+    addShape(5,tessellation,fill,-0.0,1/5,rotate,twist);    
+    addShape(6,tessellation,fill,+0.4,1/5,rotate,twist);    
+    addShape(8,tessellation,fill,+0.8,1/5,rotate,twist);     
+  }
+}
+
+function addShape(shape,tessellation,fill,xTranslation,scale,rotate,twist) {
+  vertices = shapesVertices[shape];
+  for (var i = 0; i < vertices.length; i += 3) {
+    triangle(vertices[i + 0], vertices[i + 1], vertices[i + 2], tessellation, fill,xTranslation,scale,rotate,twist);
+  }
+}
+
+$(function() {
+  var canvas = document.getElementById("gl-canvas");
+
+  gl = WebGLUtils.setupWebGL(canvas);
+  if (!gl) {
+    alert("WebGL isn't available");
+  } else {
+    //alert("WebGL is available");
+    //  Configure WebGL
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(1.0, 1.0, 1.0, 1.0);
+
+    //  Load shaders and initialize attribute buffers
+    program = initShaders(gl, "vertex-shader", "fragment-shader");
+    gl.useProgram(program);
+
+    var bufferId = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferId);
+    
+    recalculate();
+  }
+
+  $("#shape").selectmenu({change: function( event, ui ) {
+    switch (ui.item.value) {
+      default:
+      case "1":
+        step = 1;
+        break;
+      case "2":
+        step = 2;
+        break;
+      case "3":
+        step = 3;
+        break;
+      case "4":
+        step = 4;
+        break;
+      case "5":
+        step = 5;
+        break;
+      case "6":
+        step = 6;
+        break;
+    } 
+    recalculate();
+    
+  }});
+  
+  $("#tessellation-slider").slider({
+    value:  0,
+    min:    0,
+    max:    5,
+    step:   1,
+    slide:  function(event, ui) {
+      $("#tessellation").val("" + ui.value + "");
+      tessellation = ui.value;
+      recalculate();
+  }});
+
+  $("#fill").buttonset();
+  $("#fill-radio1" , "#fill").click(function() {
+    fill = 1; // solid
+    recalculate();
+  });
+  $("#fill-radio2" , "#fill").click(function() {
+    fill = 2; // Gasket
+    recalculate();
+  });
+  $("#fill-radio3" , "#fill").click(function() {
+    fill = 3; // Lines
+    recalculate();
+  });
+  $("#fill-radio4" , "#fill").click(function() {
+    fill = 4; // Gasket Lines
+    recalculate();
+  });
+  
+  $("#rotation-slider").slider({
+    value:  0,
+    min:    0,
+    max:    1800,
+    step:   1,
+    slide:  function(event, ui) {
+      $("#rotation").val("" + ui.value + "°");
+      rotate = ui.value;
+      recalculate();
+  }});
+});
+
+  $("#twist").buttonset();
+  $("#twist-radio1" , "#twist").click(function() {
+    twist = false;
+    recalculate();
+  });
+  $("#twist-radio2", "#twist").click(function() {
+    twist = true;
+    recalculate();
+  });
+
+
+function recalculate() {
+  points = [];
+  
+  addShapesForStep(step);
+  
+  gl.bufferData(gl.ARRAY_BUFFER, flatten(points), gl.STATIC_DRAW);
+  var vPosition = gl.getAttribLocation(program, "vPosition");
+  gl.vertexAttribPointer(vPosition, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(vPosition);
+
+  render();
+}
+
+function render() {
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  if (fill == 3 || fill == 4) {
+    gl.drawArrays(gl.LINES, 0, points.length);
+  } else {
+    gl.drawArrays(gl.TRIANGLES, 0, points.length);
+  }
+}
+
+
+function triangle(a, b, c, count, fill,xTranslation,xyScale,rotate,twist) {
+  var scale = xyScale || 1/5;
+
+  if (count === 0) {
+    if (twist) {
+      var da = Math.sqrt(Math.pow(a[0], 2) + Math.pow(a[1], 2)) * (rotate * Math.PI / 180.0);
+      var db = Math.sqrt(Math.pow(b[0], 2) + Math.pow(b[1], 2)) * (rotate * Math.PI / 180.0);
+      var dc = Math.sqrt(Math.pow(c[0], 2) + Math.pow(c[1], 2)) * (rotate * Math.PI / 180.0);
+  } else {
+    var da = (rotate * Math.PI / 180.0);
+    var db = (rotate * Math.PI / 180.0);
+    var dc = (rotate * Math.PI / 180.0);
+  }
+    
+    var ap = vec2(
+      (a[0] * Math.cos(da)) - (a[1] * Math.sin(da)),
+      (a[0] * Math.sin(da)) + (a[1] * Math.cos(da)));
+    var bp = vec2(
+      (b[0] * Math.cos(db)) - (b[1] * Math.sin(db)),
+      (b[0] * Math.sin(db)) + (b[1] * Math.cos(db)));
+    var cp = vec2(
+      (c[0] * Math.cos(dc)) - (c[1] * Math.sin(dc)),
+      (c[0] * Math.sin(dc)) + (c[1] * Math.cos(dc)));
+
+    ap[0] = ap[0]*scale;
+    bp[0] = bp[0]*scale;
+    cp[0] = cp[0]*scale;
+    ap[1] = ap[1]*scale;
+    bp[1] = bp[1]*scale;
+    cp[1] = cp[1]*scale;
+
+    ap[0] += xTranslation;
+    bp[0] += xTranslation;
+    cp[0] += xTranslation;
+    
+    if (fill == 3 || fill == 4) {
+      points.push(ap, bp, ap, cp, bp, cp);
+    } else {
+      points.push(ap, bp, cp);
+    }
+    
+   return;
+  }
+
+  var ab = mix(a, b, 0.5);
+  var ac = mix(a, c, 0.5);
+  var bc = mix(b, c, 0.5);
+
+  triangle(a, ab, ac, (count - 1), fill,xTranslation,xyScale,rotate,twist);
+  triangle(b, bc, ab, (count - 1), fill,xTranslation,xyScale,rotate,twist);
+  triangle(c, ac, bc, (count - 1), fill,xTranslation,xyScale,rotate,twist);
+
+  if (fill == 1 || fill == 3) {
+    triangle(ab, ac, bc, (count - 1), fill,xTranslation,xyScale,rotate,twist);
+  }
+}
+</script>
+</body>
+</html>
